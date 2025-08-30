@@ -1,0 +1,21 @@
+body {
+    background-color: #190444;
+}
+
+h1 {
+    color: blue;
+    text-align: center;
+}
+
+#tik {
+    color: #75A7FF;
+}
+
+#tok {
+    color: #FF6F91;
+}
+
+p {
+    text-align: center;
+    color: white;
+}

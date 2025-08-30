@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create - SchoolTok</title>
+    <link rel="stylesheet" href="styles/style.css" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+</head>
+
+<body class="bg-dark">
+    <div class="container text-white">
+        <h1 class="text-center fs-1"><span id="tik">School</span><span id="tok">Tok</span></h1>
+        <div id="app" class="card text-center">
+            <div class="card-body">
+                <form id="form">
+                    <div class="form-group px-3">
+                        <label for="title">Title:</label>
+                        <input type="text" class="form-control" id="title" placeholder="Enter title:" name="title">
+                    </div>
+                    <div class="well well-lg text-center p-1 py-4">
+                        <button id="upload" class="btn btn-primary" >Upload a video</button>
+                        <input type="file" id="fileInput" style="display: none;">
+                        <button id="record" class="btn btn-danger" >Record a video</button>
+                        <button id="submit" class="btn btn-success">Submit</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+        crossorigin="anonymous"></script>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+
+    const upload = document.getElementById('upload');
+    const fileInput = document.getElementById('fileInput');
+    const record = document.getElementById('record');
+    const title = document.getElementById('title');
+    const submit = document.getElementById('submit');
+    const form = document.getElementById('form');
+
+    upload.addEventListener('click', (e) => {
+        e.preventDefault();
+        fileInput.click();
+    });
+
+    // TODO Record feature
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const file = fileInput.files[0];
+
+        if(!file) {
+            alert('Plase select a file to upload.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('title', title.value);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if(response.ok) {
+                alert('File uploaded successfully!');
+                window.location.href = 'http://localhost:8000';
+            } else {
+                alert('Failed to upload file.');
+            }
+        } catch (error) {
+            console.error('Error uploading file: ', error);
+            alert('An error occured when uploading the file.');
+        }
+    })
+
+    socket.on('redirect', (dir) => {
+        window.location.href = 'http://localhost:8000' + dir;
+    })
+</script>
+
+</html>

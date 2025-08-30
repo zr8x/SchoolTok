@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SchoolTok</title>
+    <link rel="stylesheet" href="styles/app.css" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+</head>
+
+<body class="bg-dark">
+    <div class="container text-center text-white">
+        <h1 class="fs-1"><span id="tik">School</span><span id="tok">Tok</span></h1>
+        <div id="app">
+            <video id="video" autoplay loop controls>
+                <source src="" type="video/mp4" id="video-source">
+                Your browser does not support the video tag.
+            </video>
+            <p id="caption">Placeholder caption</p>
+            <br>
+            <button id="like" class="btn btn-primary mx-2">Like</button><button id="bookmark"
+                class="btn btn-info mx-2">Bookmark</button><button id="comment"
+                class="btn btn-warning mx-2">Comments</button><button id="share"
+                class="btn btn-success mx-2">Share</button><button id="scroll" class="btn btn-light mx-2">^</button><button
+                id="create" class="btn btn-danger mx-2" onclick="window.location.href='/create'">+</button>
+
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+        crossorigin="anonymous"></script>
+</body>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+
+    const app = document.getElementById('app');
+    app.style.visibility = 'hidden';
+
+    const video = document.getElementById('video');
+    const source = document.getElementById('video-source');
+    const scroll = document.getElementById('scroll');
+    const caption = document.getElementById('caption');
+
+    function getCookie(cname) {
+        let name = cname + "=";
+        let decodedCookie = decodeURIComponent(document.cookie);
+        let ca = decodedCookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) == ' ') {
+                c = c.substring(1);
+            }
+            if (c.indexOf(name) == 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return "";
+    }
+
+    function getVideo() {
+        socket.emit('video@get', (getCookie('token')));
+        socket.on('video@send', (video_file) => {
+            source.src = '/videos/' + video_file;
+            video.load();
+            video.play()
+            let new_caption = video_file.split('.')[0];
+            caption.textContent = new_caption;
+            app.style.visibility = 'visible';
+        })
+    }
+
+    const cookie = document.cookie;
+
+    if (cookie) {
+        cookieVal = getCookie('token');
+        console.log(cookieVal)
+        socket.emit('token@emit', cookieVal);
+    }
+
+
+    scroll.addEventListener('click', () => {
+        getVideo();
+    })
+
+    socket.on('token@auth', () => {
+        getVideo();
+    })
+
+    socket.on('redirect', (dir) => {
+        window.location.href = 'http://localhost:8000' + dir;
+    })
+
+</script>
+
+</html>
