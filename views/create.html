@@ -46,6 +46,22 @@
     const submit = document.getElementById('submit');
     const form = document.getElementById('form');
 
+    function getCookie(cname) {
+        let name = cname + "=";
+        let decodedCookie = decodeURIComponent(document.cookie);
+        let ca = decodedCookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) == ' ') {
+                c = c.substring(1);
+            }
+            if (c.indexOf(name) == 0) {
+                return c.substring(name.length, c.length);
+            }
+        }
+        return "";
+    }
+
     upload.addEventListener('click', (e) => {
         e.preventDefault();
         fileInput.click();
@@ -66,6 +82,7 @@
         const formData = new FormData();
         formData.append('file', file);
         formData.append('title', title.value);
+        formData.append('token', getCookie('token'));
 
         try {
             const response = await fetch('/upload', {

@@ -10,7 +10,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
-
+let temp_id = 0;
 
 app.set('views', path.join(__dirname, 'views'));
 
@@ -21,13 +21,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 io.on('connection', (socket) => {
     socket.on('token@emit', (token) => {
         if (authenticateToken(token)) {
-            socket.emit('token@auth');
+            const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
+            const user = users.find(u => u.token === token);
+            socket.emit('token@auth', user.username, temp_id);
+            temp_id = 0;
         } else {
             socket.emit('redirect', '/signin');
         }
     });
 
-    socket.on('token@create', (token, email) => {
+    socket.on('token@create', (token, email, username) => {
         const videos = fs.readdirSync(path.join(__dirname, 'public', 'videos'));
         var tokens = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
         const exists = tokens.some(user => user.email === email);
@@ -35,19 +38,39 @@ io.on('connection', (socket) => {
             socket.emit('callback', 'Email is already in use, please sign in.');
             return;
         }
-        tokens.push({ email, token, videoPool: videos });
+        tokens.push({ username, email, token, videoPool: videos, notifications: [], likes: [] });
         fs.writeFileSync(path.join(__dirname, 'tokens.json'), JSON.stringify(tokens));
         socket.emit('redirect', '/');
     });
 
     socket.on('video@get', (token) => {
-        var tokens = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')))
+        var tokens = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
         const user = tokens.find(user => user.token === token);
         const videos = fs.readdirSync(path.join(__dirname, 'public', 'videos'));
+
+        // Check for missing user or empty pool
+        if (!user || !user.videoPool || user.videoPool.length === 0) {
+            socket.emit('video@none');
+            return;
+        }
+
         const pool = user.videoPool;
         const video = pool[Math.floor(Math.random() * pool.length)];
 
-        socket.emit('video@send', video);
+        // Check for undefined video
+        if (!video) {
+            socket.emit('video@none');
+            return;
+        }
+
+        const infoArr = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        const info = infoArr.find(v => v.title + path.extname(video) === video) || {
+            title: 'No Title',
+            username: 'Unknown'
+        };
+
+
+        socket.emit('video@send', video, info);
 
         tokens = tokens.map(u => {
             if (u.token === token) {
@@ -62,8 +85,114 @@ io.on('connection', (socket) => {
         fs.writeFileSync(path.join(__dirname, 'tokens.json'), JSON.stringify(tokens));
     });
 
-    socket.on('video@submit', (title, file) => {
-        console.log(file);
+    socket.on('video@get_specific', (video_id) => {
+        const videos = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        console.log(videos);
+        const video = videos.find(v => v.id === Number(video_id));
+
+        console.log(video);
+
+        socket.emit('video@send', video.title, video);
+    })
+
+    socket.on('comment@add', (username, video, msg) => {
+        const vid_info = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        let new_info = vid_info.map(v => {
+            if (v.title === video) {
+                let comments = v.comments;
+                comments.push({
+                    'username': username,
+                    'message': msg
+                });
+
+                return { ...v, 'comments': comments };
+            }
+            return v;
+        })
+
+        fs.writeFileSync(path.join(__dirname, 'vid_info.json'), JSON.stringify(new_info));
+
+        const words = msg.split(' ');
+
+        for (const word of words) {
+            if (word.includes('@')) {
+                const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
+
+                const mapped_users = users.map(u => {
+                    if (u.username === word) {
+                        const notifications = [...u.notifications, {
+                            type: 'mention',
+                            user: username,
+                            content: msg,
+                            unread: true
+                        }]
+                        return { ...u, notifications: notifications };
+                    }
+                    return u;
+                });
+
+                fs.writeFileSync(path.join(__dirname, 'tokens.json'), JSON.stringify(mapped_users));
+            }
+        }
+    });
+
+    socket.on('comment@update', (vid) => {
+        const vid_info = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        const video = vid_info.find(v => v.title === vid);
+
+        function try_emit() {
+            try {
+                socket.emit('comment@update', video.comments);
+            } catch (err) {
+                setTimeout( () => {
+                    try_emit();
+                }, 1000);
+            }
+        }
+
+        try_emit();
+    });
+
+    socket.on('notifications@update', (token) => {
+        const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
+        const user = users.find(u => u.token === token);
+
+        socket.emit('notifications@update', user.notifications);
+    });
+
+    socket.on('like@add', (token, video_name) => {
+        const videos = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        const video = videos.find(v => v.title === video_name);
+        const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
+
+        const user = users.find(u => u.token === token);
+
+        if (!user.likes.includes(video.id)) {
+            const mapped_videos = videos.map(v => {
+                if (v.title === video_name) {
+                    return { ...v, likes: v.likes + 1 };
+                }
+                return v
+            })
+
+            const mapped_users = users.map(u => {
+                if (u === user) {
+                    return { ...u, likes: [ ...u.likes, video.id ] };
+                }
+                return u;
+            })
+
+            fs.writeFileSync(path.join(__dirname, 'vid_info.json'), JSON.stringify(mapped_videos));
+            fs.writeFileSync(path.join(__dirname, 'tokens.json'), JSON.stringify(mapped_users));
+        }
+    })
+
+    socket.on('like@update', (video_name) => {
+        const videos = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+        const video = videos.find(v => v.title === video_name);
+
+        socket.emit('like@update', video.likes);
+        console.log('Updated on backend')
     })
 });
 
@@ -87,16 +216,56 @@ app.post('/upload', upload.single('file'), (req, res) => {
     const title = req.body.title || 'untitled';
     const ext = path.extname(req.file.originalname);
     const newPath = path.join(req.file.destination, title + ext);
+    const users = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json')));
+    const token = req.body.token;
+    const info = JSON.parse(fs.readFileSync(path.join(__dirname, 'vid_info.json')));
+    const videos = fs.readdirSync(path.join(__dirname, 'public', 'videos'));
+
+    const user = users.find(u => u.token === token);
+    const username = user ? user.username : 'Unknown';
+    
+    let id = Math.floor(Math.random() * 9000000000) + 1000000000;
+
+    while (true) {
+        if (!videos.find(v => v.id === id)) {
+            break;
+        } else {
+            id = Math.floor(Math.random() * 9000000000) + 1000000000;
+        }
+    }
+    
+
+    info.push({
+        title: title,
+        username: username,
+        id: id,
+        comments: [],
+        likes: 0,
+        shares: 0
+    })
+
+    fs.writeFileSync(path.join(__dirname, 'vid_info.json'), JSON.stringify(info));
+
+    const applied_users = users.map(u => {
+        return { ...u, videoPool: videos }
+    })
+
+    fs.writeFileSync(path.join(__dirname, 'tokens.json'), JSON.stringify(applied_users));
 
     fs.rename(req.file.path, newPath, (err) => {
         if (err) {
             console.error(err);
             return res.status(500).send('Error saving file.');
         }
-        console.log(req.file);
+
         res.send('File uploaded successfully!');
     });
 });
+
+app.get('/video/:id', (req, res) => {
+    temp_id = req.params.id;
+    res.redirect('/');
+})
 
 // DEV TOOLS
 
